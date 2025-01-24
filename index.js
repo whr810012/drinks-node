@@ -54,8 +54,8 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://yourdomain.com'] 
-    : ['http://localhost:8080'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    : ['http://127.0.0.1:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   maxAge: 86400 // CORS预检请求缓存1天
@@ -69,26 +69,95 @@ app.use('/uploads', express.static('uploads', {
 
 // 中间件：验证JWT token
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: '未提供认证token' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ success: false, message: 'token无效或已过期' });
+  try {
+    const authHeader = req.headers['authorization'];
+    
+    if (!authHeader) {
+      return res.status(401).json({ 
+        success: false, 
+        message: '未提供认证token' 
+      });
     }
-    req.user = user;
+
+    // 检查 Authorization header 格式
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'token格式错误' 
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'token不能为空' 
+      });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) {
+        console.error('Token验证错误:', err);
+        
+        if (err.name === 'TokenExpiredError') {
+          return res.status(401).json({ 
+            success: false, 
+            message: 'token已过期，请重新登录' 
+          });
+        }
+        
+        if (err.name === 'JsonWebTokenError') {
+          return res.status(401).json({ 
+            success: false, 
+            message: 'token无效' 
+          });
+        }
+
+        return res.status(403).json({ 
+          success: false, 
+          message: 'token验证失败' 
+        });
+      }
+
+      // 验证成功，将用户信息添加到请求对象
+      req.user = decoded;
+      next();
+    });
+  } catch (error) {
+    console.error('Token验证异常:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '服务器错误' 
+    });
+  }
+};
+
+// 验证管理员角色的中间件
+const requireRole = (roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: '没有权限执行此操作' 
+      });
+    }
     next();
-  });
+  };
 };
 
 // 用户认证相关接口
 app.post('/api/register', async (req, res) => {
   try {
-    const { username, password, phone, email } = req.body;
+    const { username, password, phone = null, email = null } = req.body;
+
+    // 验证必填字段
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '用户名和密码为必填项' 
+      });
+    }
 
     // 验证用户名是否已存在
     const checkUser = await executeQuery('SELECT id FROM users WHERE username = ?', [username]);
@@ -117,13 +186,48 @@ app.post('/api/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // 插入新用户
-    const sql = 'INSERT INTO users (username, password, phone, email) VALUES (?, ?, ?, ?)';
-    await executeQuery(sql, [username, hashedPassword, phone, email]);
+    const sql = `
+      INSERT INTO users (
+        username, 
+        password, 
+        phone, 
+        email,
+        balance,
+        points,
+        status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    await executeQuery(sql, [
+      username,
+      hashedPassword,
+      phone,
+      email,
+      0.00,  // 默认余额
+      0,     // 默认积分
+      1      // 默认状态为正常
+    ]);
     
     res.json({ success: true, message: '注册成功' });
   } catch (error) {
     console.error('注册错误:', error);
-    res.status(500).json({ success: false, message: error.message });
+    // 添加具体的错误信息处理
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ 
+        success: false, 
+        message: '用户名已被使用' 
+      });
+    }
+    if (error.code === 'ER_NO_REFERENCED_ROW') {
+      return res.status(400).json({ 
+        success: false, 
+        message: '数据关联错误' 
+      });
+    }
+    res.status(500).json({ 
+      success: false, 
+      message: '服务器错误，请稍后重试' 
+    });
   }
 });
 
@@ -149,13 +253,15 @@ app.post('/api/login', async (req, res) => {
 
     // 生成JWT token
     const token = jwt.sign(
-      { id: user.id, username: user.username },
-      JWT_SECRET,
-      { expiresIn: '24h' }
+      { 
+        id: user.id, 
+        username: user.username,
+        // 添加 token 创建时间和过期时间
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60)
+      },
+      JWT_SECRET
     );
-
-    // 更新最后登录时间
-    await executeQuery('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
 
     // 返回用户信息和token（不包含密码）
     const { password: _, ...userWithoutPassword } = user;
@@ -164,7 +270,7 @@ app.post('/api/login', async (req, res) => {
       message: '登录成功',
       data: {
         user: userWithoutPassword,
-        token
+        token: `Bearer ${token}` // 添加 Bearer 前缀
       }
     });
   } catch (error) {
@@ -507,13 +613,26 @@ app.post('/api/promotions', authenticateToken, async (req, res) => {
       return res.status(400).json({ success: false, message: '缺少必要参数' });
     }
 
+    // 格式化日期
+    const formatDate = (dateString) => {
+      const date = new Date(dateString);
+      return date.toISOString().slice(0, 19).replace('T', ' ');
+    };
+
     const sql = `
       INSERT INTO promotions 
       (name, type, start_time, end_time, discount_value, min_amount) 
       VALUES (?, ?, ?, ?, ?, ?)
     `;
     
-    await executeQuery(sql, [name, type, start_time, end_time, discount_value, min_amount]);
+    await executeQuery(sql, [
+      name, 
+      type, 
+      formatDate(start_time),
+      formatDate(end_time),
+      discount_value,
+      min_amount
+    ]);
     res.json({ success: true, message: '促销活动创建成功' });
   } catch (error) {
     console.error('创建促销活动错误:', error);
@@ -532,6 +651,12 @@ app.put('/api/promotions/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, message: '促销活动不存在' });
     }
 
+    // 格式化日期
+    const formatDate = (dateString) => {
+      const date = new Date(dateString);
+      return date.toISOString().slice(0, 19).replace('T', ' ');
+    };
+
     const sql = `
       UPDATE promotions 
       SET name = ?, 
@@ -544,7 +669,16 @@ app.put('/api/promotions/:id', authenticateToken, async (req, res) => {
       WHERE id = ?
     `;
     
-    await executeQuery(sql, [name, type, start_time, end_time, discount_value, min_amount, id]);
+    await executeQuery(sql, [
+      name, 
+      type, 
+      formatDate(start_time),
+      formatDate(end_time),
+      discount_value,
+      min_amount,
+      id
+    ]);
+    
     res.json({ success: true, message: '促销活动更新成功' });
   } catch (error) {
     console.error('更新促销活动错误:', error);
@@ -562,20 +696,29 @@ app.delete('/api/promotions/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, message: '促销活动不存在' });
     }
 
-    // 开始事务
-    await executeQuery('START TRANSACTION');
-
+    // 使用连接池获取连接
+    const connection = await pool.getConnection();
+    
     try {
-      // 先删除关联的商品
-      await executeQuery('DELETE FROM promotion_products WHERE promotion_id = ?', [id]);
-      // 再删除促销活动
-      await executeQuery('DELETE FROM promotions WHERE id = ?', [id]);
+      // 开始事务
+      await connection.beginTransaction();
 
-      await executeQuery('COMMIT');
+      // 先删除关联的商品
+      await connection.execute('DELETE FROM promotion_products WHERE promotion_id = ?', [id]);
+      // 再删除促销活动
+      await connection.execute('DELETE FROM promotions WHERE id = ?', [id]);
+
+      // 提交事务
+      await connection.commit();
+      
       res.json({ success: true, message: '促销活动删除成功' });
     } catch (error) {
-      await executeQuery('ROLLBACK');
+      // 发生错误时回滚事务
+      await connection.rollback();
       throw error;
+    } finally {
+      // 释放连接
+      connection.release();
     }
   } catch (error) {
     console.error('删除促销活动错误:', error);
@@ -751,14 +894,141 @@ app.get('/api/admins', authenticateToken, async (req, res) => {
   }
 });
 
-// 添加管理员
-app.post('/api/admins', authenticateToken, async (req, res) => {
+// 搜索管理员
+app.get('/api/admins/search', authenticateToken, async (req, res) => {
   try {
-    const { username, password, name, role, phone, email } = req.body;
+    const { username, role, status, startDate, endDate } = req.query;
+    
+    let conditions = [];
+    let params = [];
+    
+    if (username) {
+      conditions.push('username LIKE ?');
+      params.push(`%${username}%`);
+    }
+    
+    if (role) {
+      conditions.push('role = ?');
+      params.push(role);
+    }
+    
+    if (status) {
+      conditions.push('status = ?');
+      params.push(status === 'active' ? 1 : 0);
+    }
+    
+    if (startDate) {
+      conditions.push('created_at >= ?');
+      params.push(startDate);
+    }
+    
+    if (endDate) {
+      conditions.push('created_at <= ?');
+      params.push(endDate);
+    }
+    
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    
+    const sql = `
+      SELECT id, username, name, role, phone, email, status, 
+             last_login, created_at, updated_at 
+      FROM admins 
+      ${whereClause}
+      ORDER BY created_at DESC
+    `;
+    
+    const admins = await executeQuery(sql, params);
+    
+    // 格式化返回数据
+    const formattedAdmins = admins.map(admin => ({
+      ...admin,
+      status: admin.status === 1 ? 'active' : 'inactive'
+    }));
+    
+    res.json({ 
+      success: true, 
+      data: formattedAdmins,
+      total: formattedAdmins.length
+    });
+  } catch (error) {
+    console.error('搜索管理员错误:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 管理员登录接口 - 不需要 token 验证
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    // 获取管理员信息
+    const sql = 'SELECT * FROM admins WHERE username = ?';
+    const admins = await executeQuery(sql, [username]);
+    
+    if (admins.length === 0) {
+      return res.status(401).json({ success: false, message: '用户名或密码错误' });
+    }
+
+    const admin = admins[0];
+
+    // 验证密码
+    const validPassword = await bcrypt.compare(password, admin.password);
+    if (!validPassword) {
+      return res.status(401).json({ success: false, message: '用户名或密码错误' });
+    }
+
+    // 检查管理员状态
+    if (admin.status !== 1) {
+      return res.status(403).json({ success: false, message: '账号已被禁用' });
+    }
+
+    // 生成JWT token
+    const token = jwt.sign(
+      { 
+        id: admin.id, 
+        username: admin.username,
+        role: admin.role,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60)
+      },
+      JWT_SECRET
+    );
+
+    // 更新最后登录时间
+    await executeQuery('UPDATE admins SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [admin.id]);
+
+    // 返回管理员信息和token（不包含密码）
+    const { password: _, ...adminWithoutPassword } = admin;
+    res.json({
+      success: true,
+      message: '登录成功',
+      data: {
+        admin: adminWithoutPassword,
+        token: `Bearer ${token}`
+      }
+    });
+  } catch (error) {
+    console.error('登录错误:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 添加管理员接口 - 初始化时使用，后续可以关闭
+app.post('/api/admin/register', async (req, res) => {
+  try {
+    const { username, password, name, phone = null, email = null } = req.body;
+
+    // 验证必填字段
+    if (!username || !password || !name) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '用户名、密码和姓名为必填项' 
+      });
+    }
 
     // 验证用户名是否已存在
-    const checkUser = await executeQuery('SELECT id FROM admins WHERE username = ?', [username]);
-    if (checkUser.length > 0) {
+    const checkAdmin = await executeQuery('SELECT id FROM admins WHERE username = ?', [username]);
+    if (checkAdmin.length > 0) {
       return res.status(400).json({ success: false, message: '用户名已存在' });
     }
 
@@ -766,100 +1036,118 @@ app.post('/api/admins', authenticateToken, async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // 插入新管理员，默认角色为普通管理员
     const sql = `
-      INSERT INTO admins (username, password, name, role, phone, email, status) 
-      VALUES (?, ?, ?, ?, ?, ?, 'active')
+      INSERT INTO admins (
+        username, 
+        password, 
+        name,
+        role,
+        phone, 
+        email,
+        status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
-    await executeQuery(sql, [username, hashedPassword, name, role, phone, email]);
+    
+    await executeQuery(sql, [
+      username,
+      hashedPassword,
+      name,
+      'admin',     // 默认角色为普通管理员
+      phone,
+      email,
+      1           // 默认状态为正常
+    ]);
     
     res.json({ success: true, message: '管理员添加成功' });
   } catch (error) {
     console.error('添加管理员错误:', error);
-    res.status(500).json({ success: false, message: error.message });
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ 
+        success: false, 
+        message: '用户名已被使用' 
+      });
+    }
+    res.status(500).json({ 
+      success: false, 
+      message: '服务器错误，请稍后重试' 
+    });
   }
 });
 
-// 更新管理员信息
-app.put('/api/admins/:id', authenticateToken, async (req, res) => {
+// 获取当前管理员信息
+app.get('/api/admin/profile', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, role, phone, email } = req.body;
-
-    // 验证管理员是否存在
-    const checkAdmin = await executeQuery('SELECT id, role FROM admins WHERE id = ?', [id]);
-    if (checkAdmin.length === 0) {
-      return res.status(404).json({ success: false, message: '管理员不存在' });
-    }
-
-    // 不允许修改超级管理员的角色
-    if (checkAdmin[0].role === 'super_admin' && role !== 'super_admin') {
-      return res.status(403).json({ success: false, message: '不能修改超级管理员的角色' });
+    // 检查用户是否是管理员
+    if (!req.user || !req.user.role) {
+      return res.status(403).json({ 
+        success: false, 
+        message: '无权访问管理员信息' 
+      });
     }
 
     const sql = `
-      UPDATE admins 
-      SET name = ?, role = ?, phone = ?, email = ? 
+      SELECT 
+        id, 
+        username, 
+        name, 
+        role, 
+        phone, 
+        email, 
+        status, 
+        last_login,
+        created_at, 
+        updated_at,
+        (
+          SELECT COUNT(*) 
+          FROM orders 
+          WHERE status = 'completed' 
+          AND DATE(created_at) = CURDATE()
+        ) as today_orders,
+        (
+          SELECT COALESCE(SUM(total_amount), 0) 
+          FROM orders 
+          WHERE status = 'completed' 
+          AND DATE(created_at) = CURDATE()
+        ) as today_sales
+      FROM admins 
       WHERE id = ?
     `;
-    await executeQuery(sql, [name, role, phone, email, id]);
     
-    res.json({ success: true, message: '管理员信息更新成功' });
-  } catch (error) {
-    console.error('更新管理员错误:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 更新管理员状态
-app.patch('/api/admins/:id/status', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    // 验证管理员是否存在
-    const checkAdmin = await executeQuery('SELECT id, role FROM admins WHERE id = ?', [id]);
-    if (checkAdmin.length === 0) {
-      return res.status(404).json({ success: false, message: '管理员不存在' });
-    }
-
-    // 不允许禁用超级管理员
-    if (checkAdmin[0].role === 'super_admin' && status !== 'active') {
-      return res.status(403).json({ success: false, message: '不能禁用超级管理员' });
-    }
-
-    const sql = 'UPDATE admins SET status = ? WHERE id = ?';
-    await executeQuery(sql, [status, id]);
+    const admins = await executeQuery(sql, [req.user.id]);
     
-    res.json({ success: true, message: `管理员已${status === 'active' ? '启用' : '禁用'}` });
-  } catch (error) {
-    console.error('更新管理员状态错误:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 删除管理员
-app.delete('/api/admins/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // 验证管理员是否存在
-    const checkAdmin = await executeQuery('SELECT id, role FROM admins WHERE id = ?', [id]);
-    if (checkAdmin.length === 0) {
-      return res.status(404).json({ success: false, message: '管理员不存在' });
+    if (admins.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '管理员不存在' 
+      });
     }
 
-    // 不允许删除超级管理员
-    if (checkAdmin[0].role === 'super_admin') {
-      return res.status(403).json({ success: false, message: '不能删除超级管理员' });
-    }
+    // 格式化数据
+    const admin = {
+      ...admins[0],
+      status: admins[0].status === 1 ? 'active' : 'inactive',
+      today_sales: parseFloat(admins[0].today_sales || 0),
+      permissions: {
+        canManageUsers: ['admin', 'super_admin'].includes(admins[0].role),
+        canManageProducts: true,
+        canManageOrders: true,
+        canManagePromotions: ['admin', 'super_admin'].includes(admins[0].role),
+        canViewAnalytics: true
+      }
+    };
 
-    const sql = 'DELETE FROM admins WHERE id = ?';
-    await executeQuery(sql, [id]);
-    
-    res.json({ success: true, message: '管理员删除成功' });
+    res.json({ 
+      success: true, 
+      message: '获取管理员信息成功',
+      data: admin 
+    });
   } catch (error) {
-    console.error('删除管理员错误:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('获取管理员信息错误:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '获取管理员信息失败，请稍后重试' 
+    });
   }
 });
 
@@ -905,40 +1193,34 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
     const [conversionRate] = await executeQuery(conversionRateSql);
 
     // 获取同比增长
-    const getGrowthRate = async (metric) => {
+    const getGrowthRate = async () => {
       const sql = `
+        WITH today_value AS (
+          SELECT COALESCE(SUM(total_amount), 0) as value 
+          FROM orders 
+          WHERE status = 'completed'
+          AND DATE(created_at) = CURDATE()
+        ),
+        yesterday_value AS (
+          SELECT COALESCE(SUM(total_amount), 0) as value 
+          FROM orders 
+          WHERE status = 'completed'
+          AND DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+        )
         SELECT 
-          (
-            (today.value - yesterday.value) * 100.0 / 
-            NULLIF(yesterday.value, 0)
+          COALESCE(
+            ((SELECT value FROM today_value) - (SELECT value FROM yesterday_value)) * 100.0 / 
+            NULLIF((SELECT value FROM yesterday_value), 0),
+            0
           ) as growth_rate
-        FROM (
-          ${metric} AND DATE(created_at) = CURDATE()
-        ) as today,
-        (
-          ${metric} AND DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-        ) as yesterday
       `;
       const [result] = await executeQuery(sql);
       return result.growth_rate || 0;
     };
 
-    const salesGrowth = await getGrowthRate(`
-      SELECT COALESCE(SUM(total_amount), 0) as value 
-      FROM orders 
-      WHERE status = 'completed'
-    `);
-
-    const ordersGrowth = await getGrowthRate(`
-      SELECT COUNT(*) as value 
-      FROM orders
-    `);
-
-    const avgOrderGrowth = await getGrowthRate(`
-      SELECT COALESCE(AVG(total_amount), 0) as value 
-      FROM orders 
-      WHERE status = 'completed'
-    `);
+    const salesGrowth = await getGrowthRate();
+    const ordersGrowth = await getGrowthRate();
+    const avgOrderGrowth = await getGrowthRate();
 
     res.json({
       success: true,
@@ -946,7 +1228,7 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
         overviewCards: [
           {
             title: '总销售额',
-            value: todaySales.value,
+            value: parseFloat(todaySales.value) || 0,
             prefix: '¥',
             suffix: '',
             trend: salesGrowth,
@@ -955,7 +1237,7 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
           },
           {
             title: '订单总量',
-            value: todayOrders.value,
+            value: parseInt(todayOrders.value) || 0,
             prefix: '',
             suffix: '',
             trend: ordersGrowth,
@@ -964,7 +1246,7 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
           },
           {
             title: '平均客单价',
-            value: avgOrderValue.value.toFixed(2),
+            value: (parseFloat(avgOrderValue.value) || 0).toFixed(2),
             prefix: '¥',
             suffix: '',
             trend: avgOrderGrowth,
@@ -973,10 +1255,10 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
           },
           {
             title: '转化率',
-            value: conversionRate.value.toFixed(1),
+            value: (parseFloat(conversionRate.value) || 0).toFixed(1),
             prefix: '',
             suffix: '%',
-            trend: 0, // 这里可以添加转化率的同比计算
+            trend: 0,
             icon: 'el-icon-data-analysis',
             class: 'conversion-rate'
           }
@@ -1083,33 +1365,34 @@ app.get('/api/analytics/hot-products', authenticateToken, async (req, res) => {
 
     switch (rankingPeriod) {
       case 'today':
-        dateCondition = 'DATE(o.created_at) = CURDATE()';
+        dateCondition = 'DATE(o2.created_at) = CURDATE()';
         break;
       case 'week':
-        dateCondition = 'o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
+        dateCondition = 'o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
         break;
       case 'month':
-        dateCondition = 'o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
+        dateCondition = 'o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
         break;
     }
 
     const sql = `
+      WITH total_sales AS (
+        SELECT SUM(oi2.quantity) as total_quantity
+        FROM order_items oi2 
+        JOIN orders o2 ON oi2.order_id = o2.id 
+        WHERE o2.status = 'completed' AND ${dateCondition}
+      )
       SELECT 
         p.id,
         p.name,
         p.image_url,
         COALESCE(SUM(oi.quantity), 0) as sales,
         COALESCE(SUM(oi.quantity * oi.price), 0) as amount,
-        COALESCE(SUM(oi.quantity) * 100.0 / (
-          SELECT SUM(quantity) 
-          FROM order_items oi2 
-          JOIN orders o2 ON oi2.order_id = o2.id 
-          WHERE o2.status = 'completed' AND ${dateCondition}
-        ), 0) as percentage
+        COALESCE(SUM(oi.quantity) * 100.0 / NULLIF((SELECT total_quantity FROM total_sales), 0), 0) as percentage
       FROM products p
       LEFT JOIN order_items oi ON p.id = oi.product_id
-      LEFT JOIN orders o ON oi.order_id = o.id AND o.status = 'completed'
-      WHERE ${dateCondition}
+      LEFT JOIN orders o2 ON oi.order_id = o2.id AND o2.status = 'completed'
+      WHERE (o2.id IS NULL) OR (${dateCondition})
       GROUP BY p.id, p.name, p.image_url
       ORDER BY sales DESC
       LIMIT 5
@@ -1124,6 +1407,194 @@ app.get('/api/analytics/hot-products', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('获取热销商品排行错误:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 添加测试接口
+app.get('/api/verify-token', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'token有效',
+    data: {
+      user: req.user
+    }
+  });
+});
+
+// 修改管理员信息
+app.put('/api/admins/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, email } = req.body;
+
+    // 验证管理员是否存在
+    const checkAdmin = await executeQuery('SELECT id FROM admins WHERE id = ?', [id]);
+    if (checkAdmin.length === 0) {
+      return res.status(404).json({ success: false, message: '管理员不存在' });
+    }
+
+    // 验证邮箱是否已被其他管理员使用
+    if (email) {
+      const checkEmail = await executeQuery('SELECT id FROM admins WHERE email = ? AND id != ?', [email, id]);
+      if (checkEmail.length > 0) {
+        return res.status(400).json({ success: false, message: '邮箱已被其他管理员使用' });
+      }
+    }
+
+    // 验证手机号是否已被其他管理员使用
+    if (phone) {
+      const checkPhone = await executeQuery('SELECT id FROM admins WHERE phone = ? AND id != ?', [phone, id]);
+      if (checkPhone.length > 0) {
+        return res.status(400).json({ success: false, message: '手机号已被其他管理员使用' });
+      }
+    }
+
+    // 更新管理员信息
+    const sql = 'UPDATE admins SET name = ?, phone = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+    await executeQuery(sql, [name, phone, email, id]);
+    
+    res.json({ success: true, message: '管理员信息更新成功' });
+  } catch (error) {
+    console.error('更新管理员信息错误:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 删除管理员
+app.delete('/api/admins/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 验证管理员是否存在
+    const checkAdmin = await executeQuery('SELECT id, role FROM admins WHERE id = ?', [id]);
+    if (checkAdmin.length === 0) {
+      return res.status(404).json({ success: false, message: '管理员不存在' });
+    }
+
+    // 检查是否为超级管理员
+    if (checkAdmin[0].role === 'super_admin') {
+      return res.status(403).json({ success: false, message: '不能删除超级管理员' });
+    }
+
+    // 删除管理员
+    const sql = 'DELETE FROM admins WHERE id = ?';
+    await executeQuery(sql, [id]);
+    
+    res.json({ success: true, message: '管理员删除成功' });
+  } catch (error) {
+    console.error('删除管理员错误:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 更新管理员状态
+app.patch('/api/admins/:id/status', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // 验证管理员是否存在
+    const checkAdmin = await executeQuery('SELECT id, role FROM admins WHERE id = ?', [id]);
+    if (checkAdmin.length === 0) {
+      return res.status(404).json({ success: false, message: '管理员不存在' });
+    }
+
+    // 检查是否为超级管理员
+    if (checkAdmin[0].role === 'super_admin') {
+      return res.status(403).json({ success: false, message: '不能修改超级管理员状态' });
+    }
+
+    // 更新管理员状态
+    const sql = 'UPDATE admins SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+    await executeQuery(sql, [status, id]);
+    
+    res.json({ 
+      success: true, 
+      message: `管理员状态已${status === 1 ? '启用' : '禁用'}`
+    });
+  } catch (error) {
+    console.error('更新管理员状态错误:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 创建管理员
+app.post('/api/admins', authenticateToken, async (req, res) => {
+  try {
+    const { username, password, name, role, phone, email, status } = req.body;
+
+    // 验证必填字段
+    if (!username || !password || !name || !role) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '用户名、密码、姓名和角色为必填项' 
+      });
+    }
+
+    // 验证用户名是否已存在
+    const checkUsername = await executeQuery('SELECT id FROM admins WHERE username = ?', [username]);
+    if (checkUsername.length > 0) {
+      return res.status(400).json({ success: false, message: '用户名已存在' });
+    }
+
+    // 验证邮箱是否已存在
+    if (email) {
+      const checkEmail = await executeQuery('SELECT id FROM admins WHERE email = ?', [email]);
+      if (checkEmail.length > 0) {
+        return res.status(400).json({ success: false, message: '邮箱已被使用' });
+      }
+    }
+
+    // 验证手机号是否已存在
+    if (phone) {
+      const checkPhone = await executeQuery('SELECT id FROM admins WHERE phone = ?', [phone]);
+      if (checkPhone.length > 0) {
+        return res.status(400).json({ success: false, message: '手机号已被使用' });
+      }
+    }
+
+    // 密码加密
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // 插入新管理员
+    const sql = `
+      INSERT INTO admins (
+        username, 
+        password, 
+        name,
+        role,
+        phone, 
+        email,
+        status,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `;
+    
+    await executeQuery(sql, [
+      username,
+      hashedPassword,
+      name,
+      role,
+      phone,
+      email,
+      status || 1
+    ]);
+    
+    res.json({ success: true, message: '管理员创建成功' });
+  } catch (error) {
+    console.error('创建管理员错误:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ 
+        success: false, 
+        message: '用户名已被使用' 
+      });
+    }
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || '创建管理员失败' 
+    });
   }
 });
 

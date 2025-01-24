@@ -2,15 +2,13 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'root',
-  database: process.env.DB_NAME || 'drinks',
+  host: 'localhost',
+  user: 'root',
+  password: 'text123',
+  database: 'drinks',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0
+  queueLimit: 0
 });
 
 // 添加连接池错误处理
@@ -21,23 +19,15 @@ pool.on('error', (err) => {
   }
 });
 
-async function executeQuery(sql, params = []) {
-  let retries = 3;
-  while (retries > 0) {
-    try {
-      const [rows] = await pool.execute(sql, params);
-      return rows;
-    } catch (error) {
-      console.error('SQL执行错误:', error);
-      retries--;
-      if (retries === 0) {
-        throw error;
-      }
-      // 等待1秒后重试
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+const executeQuery = async (sql, params = []) => {
+  try {
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  } catch (error) {
+    console.error('SQL执行错误:', error);
+    throw error;
   }
-}
+};
 
 module.exports = {
   pool,

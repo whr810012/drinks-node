@@ -1,180 +1,220 @@
--- 创建数据库
-CREATE DATABASE IF NOT EXISTS drinks DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+/*
+ Navicat Premium Data Transfer
 
-USE drinks;
+ Source Server         : localhost_3306
+ Source Server Type    : MySQL
+ Source Server Version : 80300 (8.3.0)
+ Source Host           : localhost:3306
+ Source Schema         : drinks
 
--- 用户表 - 存储用户基本信息、余额和积分
-CREATE TABLE IF NOT EXISTS users (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
-    username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
-    password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
-    phone VARCHAR(20) COMMENT '手机号码',
-    email VARCHAR(100) COMMENT '电子邮箱',
-    balance DECIMAL(10,2) DEFAULT 0.00 COMMENT '账户余额',
-    points INT DEFAULT 0 COMMENT '积分',
-    status TINYINT DEFAULT 1 COMMENT '用户状态：1-正常,0-禁用',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户信息表';
+ Target Server Type    : MySQL
+ Target Server Version : 80300 (8.3.0)
+ File Encoding         : 65001
 
--- 管理员表 - 存储系统管理员信息
-CREATE TABLE IF NOT EXISTS admins (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '管理员ID',
-    username VARCHAR(50) NOT NULL UNIQUE COMMENT '管理员用户名',
-    password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
-    name VARCHAR(50) NOT NULL COMMENT '管理员姓名',
-    role VARCHAR(20) NOT NULL COMMENT '角色：super_admin-超级管理员,admin-普通管理员',
-    phone VARCHAR(20) COMMENT '手机号码',
-    email VARCHAR(100) COMMENT '电子邮箱',
-    status TINYINT DEFAULT 1 COMMENT '状态：1-正常,0-禁用',
-    last_login TIMESTAMP COMMENT '最后登录时间',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='管理员信息表';
+ Date: 24/01/2025 14:37:30
+*/
 
--- 商品表 - 存储饮品商品信息
-CREATE TABLE IF NOT EXISTS products (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '商品ID',
-    name VARCHAR(100) NOT NULL COMMENT '商品名称',
-    category VARCHAR(50) NOT NULL COMMENT '商品类别',
-    price DECIMAL(10,2) NOT NULL COMMENT '商品价格',
-    stock INT NOT NULL DEFAULT 0 COMMENT '库存数量',
-    image_url VARCHAR(255) COMMENT '商品图片URL',
-    description TEXT COMMENT '商品描述',
-    status TINYINT DEFAULT 1 COMMENT '商品状态：1-上架,0-下架',
-    sales_count INT DEFAULT 0 COMMENT '销售数量',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品信息表';
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
 
--- 订单表 - 存储用户订单信息
-CREATE TABLE IF NOT EXISTS orders (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '订单ID',
-    order_no VARCHAR(50) NOT NULL UNIQUE COMMENT '订单编号',
-    user_id INT NOT NULL COMMENT '用户ID',
-    total_amount DECIMAL(10,2) NOT NULL COMMENT '订单总金额',
-    status VARCHAR(20) NOT NULL COMMENT '订单状态：pending-待支付,paid-已支付,completed-已完成,cancelled-已取消',
-    payment_method VARCHAR(20) COMMENT '支付方式',
-    payment_time TIMESTAMP NULL COMMENT '支付时间',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (user_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单信息表';
+-- ----------------------------
+-- Table structure for admins
+-- ----------------------------
+DROP TABLE IF EXISTS `admins`;
+CREATE TABLE `admins`  (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '管理员ID',
+  `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '管理员用户名',
+  `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '密码(加密)',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '管理员姓名',
+  `role` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '角色：super_admin-超级管理员,admin-普通管理员',
+  `phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '手机号码',
+  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '电子邮箱',
+  `status` tinyint NULL DEFAULT 1 COMMENT '状态：1-正常,0-禁用',
+  `last_login` timestamp NULL DEFAULT NULL COMMENT '最后登录时间',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `username`(`username` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 8 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '管理员信息表' ROW_FORMAT = Dynamic;
 
--- 订单详情表 - 存储订单商品明细
-CREATE TABLE IF NOT EXISTS order_items (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '订单项ID',
-    order_id INT NOT NULL COMMENT '订单ID',
-    product_id INT NOT NULL COMMENT '商品ID',
-    quantity INT NOT NULL COMMENT '购买数量',
-    price DECIMAL(10,2) NOT NULL COMMENT '商品单价',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    FOREIGN KEY (order_id) REFERENCES orders(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单商品明细表';
+-- ----------------------------
+-- Records of admins
+-- ----------------------------
+INSERT INTO `admins` VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH', '系统管理员', 'super_admin', '13800138001', 'admin@example.com', 1, NULL, '2025-01-21 21:50:58', '2025-01-24 12:28:43');
+INSERT INTO `admins` VALUES (3, 'user', '$2a$10$gU4K2K2QtNVsC3ijionUXuspL1zUKiGLFuLHXIr2UVNX5rJTDBnla', '王洪瑞', 'super_admin', '19861427085', '1028943406@qq.com', 1, '2025-01-24 12:27:07', '2025-01-21 23:21:49', '2025-01-24 12:28:38');
+INSERT INTO `admins` VALUES (5, '阿达啊是的', '$2a$10$5RQBoif1XzCQYtNLdcwe6eB58ICxUmo8P2dzv14KtqfPFpBSUXSp.', '阿达撒大声地', 'admin', '19872640985', '123@qq.com', 1, NULL, '2025-01-24 11:56:24', '2025-01-24 14:25:21');
+INSERT INTO `admins` VALUES (6, '阿达是的', '$2a$10$n8xFkJLqfwKSjrBYV2kjP.6ox/V05uIkujNLpnsJNlH3LRcKKqEpS', '阿萨德阿是', 'admin', NULL, NULL, 1, NULL, '2025-01-24 12:09:33', '2025-01-24 14:25:21');
+INSERT INTO `admins` VALUES (7, '123123', '$2a$10$gtV5wwGeTyzXmxSHoXuDVOjMd8SdZdJUF1FMzfUUXzjfMh9z5k9ka', '123', 'normal_admin', '19861427087', '1028941113406@qq.com', 1, NULL, '2025-01-24 14:25:00', '2025-01-24 14:25:20');
 
--- 促销活动表 - 存储促销活动信息
-CREATE TABLE IF NOT EXISTS promotions (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '促销活动ID',
-    name VARCHAR(100) NOT NULL COMMENT '活动名称',
-    type VARCHAR(20) NOT NULL COMMENT '活动类型：discount-折扣,special_price-特价,points-积分',
-    start_time TIMESTAMP NOT NULL COMMENT '活动开始时间',
-    end_time TIMESTAMP NOT NULL COMMENT '活动结束时间',
-    discount_value DECIMAL(10,2) COMMENT '折扣值或特价金额',
-    points_value INT COMMENT '积分值',
-    status TINYINT DEFAULT 1 COMMENT '活动状态：1-活动中,0-已结束',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='促销活动表';
+-- ----------------------------
+-- Table structure for order_items
+-- ----------------------------
+DROP TABLE IF EXISTS `order_items`;
+CREATE TABLE `order_items`  (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '订单项ID',
+  `order_id` int NOT NULL COMMENT '订单ID',
+  `product_id` int NOT NULL COMMENT '商品ID',
+  `quantity` int NOT NULL COMMENT '购买数量',
+  `price` decimal(10, 2) NOT NULL COMMENT '商品单价',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `order_id`(`order_id` ASC) USING BTREE,
+  INDEX `idx_product_quantity`(`product_id` ASC, `quantity` ASC) USING BTREE,
+  CONSTRAINT `order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `order_items_ibfk_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '订单商品明细表' ROW_FORMAT = Dynamic;
 
--- 促销商品关联表 - 存储促销活动和商品的关联关系
-CREATE TABLE IF NOT EXISTS promotion_products (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '关联ID',
-    promotion_id INT NOT NULL COMMENT '促销活动ID',
-    product_id INT NOT NULL COMMENT '商品ID',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    FOREIGN KEY (promotion_id) REFERENCES promotions(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='促销活动商品关联表';
+-- ----------------------------
+-- Records of order_items
+-- ----------------------------
 
--- 插入初始管理员数据
-INSERT INTO admins (username, password, name, role, phone, email) VALUES
-('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH', '系统管理员', 'super_admin', '13800138000', 'admin@example.com');
+-- ----------------------------
+-- Table structure for orders
+-- ----------------------------
+DROP TABLE IF EXISTS `orders`;
+CREATE TABLE `orders`  (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '订单ID',
+  `order_no` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '订单编号',
+  `user_id` int NOT NULL COMMENT '用户ID',
+  `total_amount` decimal(10, 2) NOT NULL COMMENT '订单总金额',
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '订单状态：pending-待支付,paid-已支付,completed-已完成,cancelled-已取消',
+  `payment_method` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '支付方式',
+  `payment_time` timestamp NULL DEFAULT NULL COMMENT '支付时间',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `order_no`(`order_no` ASC) USING BTREE,
+  INDEX `user_id`(`user_id` ASC) USING BTREE,
+  INDEX `idx_created_at_status`(`created_at` ASC, `status` ASC) USING BTREE,
+  CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '订单信息表' ROW_FORMAT = Dynamic;
 
--- 插入示例商品数据
-INSERT INTO products (name, category, price, stock, description, status) VALUES
-('可口可乐', '碳酸饮料', 3.50, 100, '经典可口可乐', 1),
-('百事可乐', '碳酸饮料', 3.50, 100, '百事可乐', 1),
-('农夫山泉', '矿泉水', 2.00, 200, '天然矿泉水', 1),
-('红牛', '功能饮料', 6.00, 50, '提神饮料', 1),
-('雀巢咖啡', '咖啡', 5.00, 80, '即饮咖啡', 1);
+-- ----------------------------
+-- Records of orders
+-- ----------------------------
 
--- 插入示例促销活动
-INSERT INTO promotions (name, type, start_time, end_time, discount_value, status) VALUES
-('夏季特惠', 'discount', '2024-01-01 00:00:00', '2024-12-31 23:59:59', 0.8, 1);
+-- ----------------------------
+-- Table structure for products
+-- ----------------------------
+DROP TABLE IF EXISTS `products`;
+CREATE TABLE `products`  (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '商品ID',
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '商品名称',
+  `category` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '商品类别',
+  `price` decimal(10, 2) NOT NULL COMMENT '商品价格',
+  `stock` int NOT NULL DEFAULT 0 COMMENT '库存数量',
+  `image_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '商品图片URL',
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '商品描述',
+  `status` tinyint NULL DEFAULT 1 COMMENT '商品状态：1-上架,0-下架',
+  `sales_count` int NULL DEFAULT 0 COMMENT '销售数量',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_category`(`category` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 7 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '商品信息表' ROW_FORMAT = Dynamic;
 
--- 关联促销活动和商品
-INSERT INTO promotion_products (promotion_id, product_id) VALUES
-(1, 1),
-(1, 2);
+-- ----------------------------
+-- Records of products
+-- ----------------------------
+INSERT INTO `products` VALUES (1, '可口可乐', '碳酸饮料', 3.50, 100, NULL, '经典可口可乐', 1, 0, '2025-01-21 21:50:58', '2025-01-24 14:29:42');
+INSERT INTO `products` VALUES (2, '百事可乐', '碳酸饮料', 3.50, 100, NULL, '百事可乐', 1, 0, '2025-01-21 21:50:58', '2025-01-21 21:50:58');
+INSERT INTO `products` VALUES (3, '农夫山泉', '矿泉水', 2.00, 200, NULL, '天然矿泉水', 1, 0, '2025-01-21 21:50:58', '2025-01-21 21:50:58');
+INSERT INTO `products` VALUES (4, '红牛', '功能饮料', 6.00, 50, NULL, '提神饮料', 1, 0, '2025-01-21 21:50:58', '2025-01-21 21:50:58');
+INSERT INTO `products` VALUES (5, '雀巢咖啡', '咖啡', 5.00, 80, NULL, '即饮咖啡', 1, 0, '2025-01-21 21:50:58', '2025-01-21 21:50:58');
+INSERT INTO `products` VALUES (6, 'asd 123', '碳酸饮料', 10.00, 10, 'https://tse1-mm.cn.bing.net/th/id/OIP-C.qmIh5R-d_DmDKOYgzN09agHaJQ?rs=1&pid=ImgDetMain', 'asdasdasd', 1, 0, '2025-01-24 14:34:30', '2025-01-24 14:35:26');
 
--- 添加索引以优化数据分析查询
-ALTER TABLE orders ADD INDEX idx_created_at_status (created_at, status);
-ALTER TABLE order_items ADD INDEX idx_product_quantity (product_id, quantity);
-ALTER TABLE products ADD INDEX idx_category (category);
+-- ----------------------------
+-- Table structure for promotion_products
+-- ----------------------------
+DROP TABLE IF EXISTS `promotion_products`;
+CREATE TABLE `promotion_products`  (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '关联ID',
+  `promotion_id` int NOT NULL COMMENT '促销活动ID',
+  `product_id` int NOT NULL COMMENT '商品ID',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `promotion_id`(`promotion_id` ASC) USING BTREE,
+  INDEX `product_id`(`product_id` ASC) USING BTREE,
+  CONSTRAINT `promotion_products_ibfk_1` FOREIGN KEY (`promotion_id`) REFERENCES `promotions` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `promotion_products_ibfk_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '促销活动商品关联表' ROW_FORMAT = Dynamic;
 
--- 创建销售统计视图
-CREATE OR REPLACE VIEW v_sales_stats AS
-SELECT 
-    DATE(o.created_at) as sale_date,
-    COUNT(DISTINCT o.id) as order_count,
-    SUM(o.total_amount) as total_sales,
-    AVG(o.total_amount) as avg_order_value,
-    COUNT(DISTINCT o.user_id) as customer_count
-FROM orders o
-WHERE o.status = 'completed'
-GROUP BY DATE(o.created_at);
+-- ----------------------------
+-- Records of promotion_products
+-- ----------------------------
+INSERT INTO `promotion_products` VALUES (1, 1, 1, '2025-01-21 21:50:58');
+INSERT INTO `promotion_products` VALUES (2, 1, 2, '2025-01-21 21:50:58');
 
--- 创建商品销售排行视图
-CREATE OR REPLACE VIEW v_product_sales_ranking AS
-SELECT 
-    p.id,
-    p.name,
-    p.category,
-    p.image_url,
-    COUNT(DISTINCT o.id) as order_count,
-    SUM(oi.quantity) as total_quantity,
-    SUM(oi.quantity * oi.price) as total_amount,
-    AVG(oi.price) as avg_price
-FROM products p
-LEFT JOIN order_items oi ON p.id = oi.product_id
-LEFT JOIN orders o ON oi.order_id = o.id AND o.status = 'completed'
-GROUP BY p.id, p.name, p.category, p.image_url;
+-- ----------------------------
+-- Table structure for promotions
+-- ----------------------------
+DROP TABLE IF EXISTS `promotions`;
+CREATE TABLE `promotions`  (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '促销活动ID',
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '活动名称',
+  `type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '活动类型：discount-折扣,special_price-特价,points-积分',
+  `start_time` timestamp NOT NULL COMMENT '活动开始时间',
+  `end_time` timestamp NOT NULL COMMENT '活动结束时间',
+  `discount_value` decimal(10, 2) NULL DEFAULT NULL COMMENT '折扣值或特价金额',
+  `points_value` int NULL DEFAULT NULL COMMENT '积分值',
+  `status` tinyint NULL DEFAULT 1 COMMENT '活动状态：1-活动中,0-已结束',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '促销活动表' ROW_FORMAT = Dynamic;
 
--- 创建分类销售统计视图
-CREATE OR REPLACE VIEW v_category_sales AS
-SELECT 
-    p.category,
-    COUNT(DISTINCT p.id) as product_count,
-    COUNT(DISTINCT o.id) as order_count,
-    SUM(oi.quantity) as total_quantity,
-    SUM(oi.quantity * oi.price) as total_amount,
-    AVG(oi.price) as avg_price
-FROM products p
-LEFT JOIN order_items oi ON p.id = oi.product_id
-LEFT JOIN orders o ON oi.order_id = o.id AND o.status = 'completed'
-GROUP BY p.category;
+-- ----------------------------
+-- Records of promotions
+-- ----------------------------
+INSERT INTO `promotions` VALUES (1, '夏季特惠', 'discount', '2024-01-01 00:00:00', '2024-12-31 23:59:59', 0.80, NULL, 1, '2025-01-21 21:50:58', '2025-01-21 21:50:58');
 
--- 创建用户消费统计视图
-CREATE OR REPLACE VIEW v_user_consumption AS
-SELECT 
-    u.id as user_id,
-    u.username,
-    COUNT(DISTINCT o.id) as order_count,
-    SUM(o.total_amount) as total_consumption,
-    AVG(o.total_amount) as avg_order_amount,
-    MIN(o.created_at) as first_order_time,
-    MAX(o.created_at) as last_order_time
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id AND o.status = 'completed'
-GROUP BY u.id, u.username; 
+-- ----------------------------
+-- Table structure for users
+-- ----------------------------
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users`  (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+  `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户名',
+  `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '密码(加密)',
+  `phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '手机号码',
+  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '电子邮箱',
+  `balance` decimal(10, 2) NULL DEFAULT 0.00 COMMENT '账户余额',
+  `points` int NULL DEFAULT 0 COMMENT '积分',
+  `status` tinyint NULL DEFAULT 1 COMMENT '用户状态：1-正常,0-禁用',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `username`(`username` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '用户信息表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of users
+-- ----------------------------
+INSERT INTO `users` VALUES (1, '123', '$2a$10$hkFFAC2ZIvapzUTpG9rmzuBORjUmSyJLWGu048gqLUYAHgaNfmHRa', NULL, NULL, 0.00, 0, 1, '2025-01-21 22:59:50', '2025-01-21 22:59:50');
+INSERT INTO `users` VALUES (2, '333', '$2a$10$QMmF81eXwZ9I.ol06W.5..FuaTUcTbQBQArqySabDmNSoQNLX8fFu', NULL, NULL, 0.00, 0, 1, '2025-01-21 23:01:17', '2025-01-21 23:01:17');
+
+-- ----------------------------
+-- View structure for v_category_sales
+-- ----------------------------
+DROP VIEW IF EXISTS `v_category_sales`;
+CREATE ALGORITHM = UNDEFINED SQL SECURITY DEFINER VIEW `v_category_sales` AS select `p`.`category` AS `category`,count(distinct `p`.`id`) AS `product_count`,count(distinct `o`.`id`) AS `order_count`,sum(`oi`.`quantity`) AS `total_quantity`,sum((`oi`.`quantity` * `oi`.`price`)) AS `total_amount`,avg(`oi`.`price`) AS `avg_price` from ((`products` `p` left join `order_items` `oi` on((`p`.`id` = `oi`.`product_id`))) left join `orders` `o` on(((`oi`.`order_id` = `o`.`id`) and (`o`.`status` = 'completed')))) group by `p`.`category`;
+
+-- ----------------------------
+-- View structure for v_product_sales_ranking
+-- ----------------------------
+DROP VIEW IF EXISTS `v_product_sales_ranking`;
+CREATE ALGORITHM = UNDEFINED SQL SECURITY DEFINER VIEW `v_product_sales_ranking` AS select `p`.`id` AS `id`,`p`.`name` AS `name`,`p`.`category` AS `category`,`p`.`image_url` AS `image_url`,count(distinct `o`.`id`) AS `order_count`,sum(`oi`.`quantity`) AS `total_quantity`,sum((`oi`.`quantity` * `oi`.`price`)) AS `total_amount`,avg(`oi`.`price`) AS `avg_price` from ((`products` `p` left join `order_items` `oi` on((`p`.`id` = `oi`.`product_id`))) left join `orders` `o` on(((`oi`.`order_id` = `o`.`id`) and (`o`.`status` = 'completed')))) group by `p`.`id`,`p`.`name`,`p`.`category`,`p`.`image_url`;
+
+-- ----------------------------
+-- View structure for v_sales_stats
+-- ----------------------------
+DROP VIEW IF EXISTS `v_sales_stats`;
+CREATE ALGORITHM = UNDEFINED SQL SECURITY DEFINER VIEW `v_sales_stats` AS select cast(`o`.`created_at` as date) AS `sale_date`,count(distinct `o`.`id`) AS `order_count`,sum(`o`.`total_amount`) AS `total_sales`,avg(`o`.`total_amount`) AS `avg_order_value`,count(distinct `o`.`user_id`) AS `customer_count` from `orders` `o` where (`o`.`status` = 'completed') group by cast(`o`.`created_at` as date);
+
+-- ----------------------------
+-- View structure for v_user_consumption
+-- ----------------------------
+DROP VIEW IF EXISTS `v_user_consumption`;
+CREATE ALGORITHM = UNDEFINED SQL SECURITY DEFINER VIEW `v_user_consumption` AS select `u`.`id` AS `user_id`,`u`.`username` AS `username`,count(distinct `o`.`id`) AS `order_count`,sum(`o`.`total_amount`) AS `total_consumption`,avg(`o`.`total_amount`) AS `avg_order_amount`,min(`o`.`created_at`) AS `first_order_time`,max(`o`.`created_at`) AS `last_order_time` from (`users` `u` left join `orders` `o` on(((`u`.`id` = `o`.`user_id`) and (`o`.`status` = 'completed')))) group by `u`.`id`,`u`.`username`;
+
+SET FOREIGN_KEY_CHECKS = 1;
